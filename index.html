@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" type="image/png" href="assets/favicon.webp">
+    <title>N2O</title>
+    <style>
+        :root { --bg: #121212; --card: #1e1e1e; --accent: #e60012; --text: #e0e0e0; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+        h1 { text-align: center; color: var(--accent); margin-bottom: 30px; font-weight: 900; letter-spacing: 2px; font-size: 2.5rem; }
+        
+        /* Loader Iniziale */
+        #page-loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg); display: flex; justify-content: center; align-items: center;
+            z-index: 9999; transition: opacity 0.4s ease;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 4px solid #2a2a2a;
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px; max-width: 1200px; margin-inline: auto; align-items: center;}
+        .controls > * { flex: 1 1 calc(50% - 10px); min-width: 140px; }
+        @media(min-width: 768px) { .controls > * { flex: 1; } }
+        
+        .search-wrapper { position: relative; flex: 1 1 100%; min-width: 100%; }
+        @media(min-width: 768px) { .search-wrapper { flex: 2; min-width: auto; } }
+        
+        input, select, .view-btn { 
+            padding: 12px; border-radius: 8px; border: 2px solid #333; background: #2a2a2a; 
+            color: white; font-size: 0.9rem; width: 100%; outline: none; box-sizing: border-box; appearance: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        #searchInput { padding-right: 40px; } 
+        input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 8px rgba(230,0,18,0.3); }
+        
+        .clear-btn {
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            background: transparent; border: none; color: #888; font-size: 1.5rem;
+            cursor: pointer; display: none; padding: 0; line-height: 1; z-index: 10;
+        }
+        .clear-btn:hover, .clear-btn:active { color: var(--accent); }
+
+        .view-btn { cursor: pointer; text-align: center; font-weight: bold; background: #333; border-color: #444; }
+        .view-btn:active { transform: scale(0.98); }
+        
+        /* Dropdown Autocompletamento */
+        .suggestions-box {
+            position: absolute; top: calc(100% + 5px); left: 0; right: 0; background: var(--card); 
+            border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.9); z-index: 50; display: none; 
+            overflow: hidden; border: 1px solid #444;
+        }
+        .suggestion-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #333; font-size: 0.9rem; }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:active { background: var(--accent); }
+        
+        /* Griglia standard */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; max-width: 1200px; margin: 0 auto; }
+        @media(min-width: 768px) { .grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; } }
+        
+        /* Vista a Lista */
+        .grid.list-view { display: flex; flex-direction: column; gap: 10px; }
+        .grid.list-view .card { flex-direction: row; align-items: stretch; height: 110px; }
+        .grid.list-view .img-wrapper { width: 90px; height: 100%; aspect-ratio: auto; border-bottom: none; border-right: 2px solid #333; }
+        .grid.list-view .content { justify-content: center; padding: 10px; }
+        .grid.list-view .title { font-size: 0.95rem; margin-bottom: 6px; }
+        
+        /* Card e Animazioni */
+        .card { 
+            background: var(--card); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer; 
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, filter 0.2s; 
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* Feedback Visivo Tocco */
+        .card:active { 
+            transform: scale(0.95) !important; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.8);
+            filter: brightness(0.85);
+            transition: transform 0.05s ease, filter 0.05s ease;
+        }
+        
+        /* Skeleton Immagini */
+        .img-wrapper {
+            width: 100%; aspect-ratio: 2/3; background: #2a2a2a;
+            position: relative; border-bottom: 2px solid #333; overflow: hidden;
+        }
+        .img-wrapper::after {
+            content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+            background: linear-gradient(to right, transparent, rgba(230,0,18,0.15), transparent);
+            transform: skewX(-25deg); animation: skeletonShine 1.5s infinite; z-index: 1;
+        }
+        @keyframes skeletonShine { 100% { left: 200%; } }
+        
+        .cover { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s ease; position: relative; z-index: 2; }
+        .cover.loaded { opacity: 1; }
+        
+        .content { padding: 12px; display: flex; flex-direction: column; flex-grow: 1; }
+        .title { font-size: 1rem; font-weight: bold; margin: 0 0 10px 0; line-height: 1.2; }
+        
+        .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+        .badge { padding: 4px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
+        .sw1 { background: #4caf50; color: #fff; }
+        .sw2 { background: var(--accent); color: #fff; }
+        .patch { background: #2196f3; color: #fff; }
+        
+        @keyframes popIn { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+
+        /* Modale */
+        .modal { 
+            position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; 
+            background-color: rgba(0,0,0,0.8); backdrop-filter: blur(5px); padding: 15px; box-sizing: border-box; 
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal.active { opacity: 1; visibility: visible; }
+        
+        .modal-content { 
+            background: var(--card); border-radius: 12px; max-width: 500px; width: 100%; max-height: 90vh; 
+            overflow-y: auto; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.9); display: flex; flex-direction: column;
+            transform: scale(0.95); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .modal.active .modal-content { transform: scale(1); }
+
+        .modal-header-container { position: relative; width: 100%; max-height: 250px; overflow: hidden; border-bottom: 3px solid var(--accent); background: #000; }
+        .modal-header-img { width: 100%; height: 250px; object-fit: cover; object-position: center center; display: block; }
+        
+        .modal-body { padding: 20px; }
+        .modal-title { font-size: 1.5rem; margin: 0 0 15px 0; color: #fff; }
+        .close-btn { position: absolute; top: 10px; right: 15px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2; transition: background 0.2s; }
+        .close-btn:hover { background: var(--accent); }
+        .info-section { background: #2a2a2a; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
+        .info-section h3 { margin: 0 0 10px 0; font-size: 0.9rem; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+        .info-list { margin: 0; padding-left: 20px; font-size: 0.9rem; color: #ccc; }
+        .info-list li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <!-- Loader Pagina Iniziale -->
+    <div id="page-loader">
+        <div class="spinner"></div>
+    </div>
+
+    <h1>N2O</h1>
+    
+    <div class="controls">
+        <div class="search-wrapper">
+            <input type="text" id="searchInput" autocomplete="off" placeholder="Cerca un Gioco (Esempio: Zelda)">
+            <button id="clearSearch" class="clear-btn">&times;</button>
+            <div id="suggestions" class="suggestions-box"></div>
+        </div>
+        <select id="consoleFilter">
+            <option value="all">Tutte le Switch</option>
+            <option value="sw1">Switch 1</option>
+            <option value="sw2">Switch 2</option>
+        </select>
+        <select id="fpsFilter">
+            <option value="all">Target FPS (Tutti)</option>
+            <option value="30">30 FPS</option>
+            <option value="60">60 FPS</option>
+        </select>
+        <select id="mediaFilter">
+            <option value="all">Formato (Tutti)</option>
+            <option value="Fisico">Fisico</option>
+            <option value="Digitale">Digitale</option>
+        </select>
+        <select id="patchFilter">
+            <option value="all">Patch e Non (Tutti)</option>
+            <option value="yes">Con Patch Upgrade</option>
+        </select>
+        <button id="viewToggle" class="view-btn">Vedi Come Lista</button>
+    </div>
+
+    <div class="grid" id="game-grid"></div>
+
+    <div id="gameModal" class="modal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+            <div class="modal-header-container">
+                <img id="modal-img" src="" class="modal-header-img" alt="Copertina">
+            </div>
+            <div class="modal-body" id="modal-details"></div>
+        </div>
+    </div>
+
+    <script>
+        let allGames = [];
+        const grid = document.getElementById('game-grid');
+        const viewToggleBtn = document.getElementById('viewToggle');
+        const pageLoader = document.getElementById('page-loader');
+        
+        // Funzione per la vibrazione haptica
+        function triggerHaptic(duration) {
+            if (navigator.vibrate) {
+                navigator.vibrate(duration);
+            }
+        }
+
+        // Inizializzazione della vista salvata
+        let isListView = localStorage.getItem('n2o_view_pref') === 'list';
+        if (isListView) {
+            grid.classList.add('list-view');
+            viewToggleBtn.textContent = 'Vedi Come Griglia';
+        }
+
+        // Toggle della vista
+        viewToggleBtn.addEventListener('click', () => {
+            triggerHaptic(10);
+            grid.classList.toggle('list-view');
+            isListView = grid.classList.contains('list-view');
+            localStorage.setItem('n2o_view_pref', isListView ? 'list' : 'grid');
+            viewToggleBtn.textContent = isListView ? 'Vedi Come Griglia' : 'Vedi Come Lista';
+        });
+
+        fetch('db/switch_games_master_final.json')
+            .then(response => response.json())
+            .then(data => {
+                // FILTRO CORE: Mantiene solo gli oggetti dove 'visibile' non è esplicitamente false
+                const giochiFiltrati = data.filter(g => g.visibile !== false);
+                
+                giochiFiltrati.sort((a, b) => a.titolo.localeCompare(b.titolo));
+                allGames = giochiFiltrati;
+                
+                renderInitialGrid(allGames);
+                setupFilters();
+                setupAutocomplete();
+                
+                // Rimuove il loader a fine fetch con una piccola sfumatura
+                pageLoader.style.opacity = '0';
+                setTimeout(() => pageLoader.remove(), 400);
+            })
+
+        function renderInitialGrid(games) {
+            grid.innerHTML = games.map(gioco => {
+                const localCover = `assets/${gioco.id_master}.webp`;
+                const fallbackCover = `https://placehold.co/400x600/2a2a2a/e0e0e0?text=${encodeURIComponent(gioco.titolo)}`;
+                
+                let badges = '';
+                if (gioco.performance.switch_1) badges += `<span class="badge sw1">Switch 1</span>`;
+                if (gioco.performance.switch_2) badges += `<span class="badge sw2">Switch 2</span>`;
+                if (gioco.patch_upgrade.disponibile) badges += `<span class="badge patch">Patch</span>`;
+
+                return `
+                    <div class="card" id="card-${gioco.id_master}" onclick="openModal('${gioco.id_master}')">
+                        <div class="img-wrapper">
+                            <img id="img-${gioco.id_master}" src="${localCover}" onerror="this.src='${fallbackCover}'" onload="this.classList.add('loaded')" alt="${gioco.titolo}" class="cover" loading="lazy">
+                        </div>
+                        <div class="content">
+                            <h2 class="title">${gioco.titolo}</h2>
+                            <div class="tags">${badges}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function cleanString(str) {
+            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        }
+
+        function setupAutocomplete() {
+            const searchInput = document.getElementById('searchInput');
+            const suggestionsBox = document.getElementById('suggestions');
+            const clearBtn = document.getElementById('clearSearch');
+
+            searchInput.addEventListener('input', (e) => {
+                const query = cleanString(e.target.value);
+                
+                clearBtn.style.display = e.target.value.length > 0 ? 'block' : 'none';
+
+                if (!query) {
+                    suggestionsBox.style.display = 'none';
+                    return;
+                }
+
+                const matches = allGames.filter(g => cleanString(g.titolo).includes(query)).slice(0, 5);
+                
+                if (matches.length > 0) {
+                    suggestionsBox.innerHTML = matches.map(m => 
+                        `<div class="suggestion-item" onclick="selectSuggestion('${m.id_master}')">${m.titolo}</div>`
+                    ).join('');
+                    suggestionsBox.style.display = 'block';
+                } else {
+                    suggestionsBox.style.display = 'none';
+                }
+            });
+
+            clearBtn.addEventListener('click', () => {
+                triggerHaptic(10);
+                searchInput.value = '';
+                clearBtn.style.display = 'none';
+                suggestionsBox.style.display = 'none';
+                searchInput.dispatchEvent(new Event('input')); 
+                searchInput.focus(); 
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!searchInput.contains(e.target) && !suggestionsBox.contains(e.target) && e.target !== clearBtn) {
+                    suggestionsBox.style.display = 'none';
+                }
+            });
+        }
+
+        window.selectSuggestion = function(idMaster) {
+            triggerHaptic(10);
+            const gioco = allGames.find(g => g.id_master === idMaster);
+            const searchInput = document.getElementById('searchInput');
+            const suggestionsBox = document.getElementById('suggestions');
+            const clearBtn = document.getElementById('clearSearch');
+            
+            if (gioco) {
+                searchInput.value = gioco.titolo;
+                suggestionsBox.style.display = 'none';
+                clearBtn.style.display = 'block';
+                searchInput.dispatchEvent(new Event('input'));
+            }
+        };
+
+        function setupFilters() {
+            const inputs = ['searchInput', 'consoleFilter', 'patchFilter', 'fpsFilter', 'mediaFilter'];
+            inputs.forEach(id => document.getElementById(id).addEventListener('input', applyFilters));
+            inputs.forEach(id => document.getElementById(id).addEventListener('change', applyFilters));
+
+            function applyFilters() {
+                const query = cleanString(document.getElementById('searchInput').value);
+                const consoleVal = document.getElementById('consoleFilter').value;
+                const patchVal = document.getElementById('patchFilter').value;
+                const fpsVal = document.getElementById('fpsFilter').value;
+                const mediaVal = document.getElementById('mediaFilter').value;
+
+                allGames.forEach(gioco => {
+                    let match = true;
+                    if (query && !cleanString(gioco.titolo).includes(query)) match = false;
+                    if (consoleVal === 'sw1' && !gioco.performance.switch_1) match = false;
+                    if (consoleVal === 'sw2' && !gioco.performance.switch_2) match = false;
+                    if (patchVal === 'yes' && !gioco.patch_upgrade.disponibile) match = false;
+
+                    if (fpsVal !== 'all') {
+                        const sw1Fps = gioco.performance.switch_1?.framerate_target?.toString() || "";
+                        const sw2Fps = gioco.performance.switch_2?.framerate_target?.toString() || "";
+                        if (!sw1Fps.includes(fpsVal) && !sw2Fps.includes(fpsVal)) match = false;
+                    }
+
+                    if (mediaVal !== 'all') {
+                        const hasMedia = gioco.release_disponibili.some(r => r.mercato.toLowerCase().includes(mediaVal.toLowerCase()));
+                        if (!hasMedia) match = false;
+                    }
+
+                    const card = document.getElementById(`card-${gioco.id_master}`);
+                    if (card) { 
+                        card.style.display = match ? 'flex' : 'none';
+                        if (match) {
+                            card.style.animation = 'none';
+                            card.offsetHeight;
+                            card.style.animation = 'popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards';
+                        }
+                    }
+                });
+            }
+        }
+
+        function openModal(idMaster) {
+            triggerHaptic(15);
+            const gioco = allGames.find(g => g.id_master === idMaster);
+            if (!gioco) return;
+            document.getElementById('modal-img').src = document.getElementById(`img-${idMaster}`).src;
+
+            let perfHTML = '';
+            if (gioco.performance.switch_1) perfHTML += `<li><strong>Switch 1:</strong> ${gioco.performance.switch_1.framerate_target || 'N/D'} FPS</li>`;
+            if (gioco.performance.switch_2) perfHTML += `<li><strong>Switch 2:</strong> ${gioco.performance.switch_2.framerate_target || 'N/D'} FPS (Upscaling: ${gioco.performance.switch_2.upscaling || 'Nessuno'})</li>`;
+
+            let releaseHTML = gioco.release_disponibili.map(r => `<li>${r.piattaforma_origine} - <strong>${r.mercato}</strong></li>`).join('');
+
+            document.getElementById('modal-details').innerHTML = `
+                <h2 class="modal-title">${gioco.titolo}</h2>
+                <div style="margin-bottom: 15px; color: #aaa; font-size: 0.9rem;"><strong>Genere:</strong> ${gioco.genere.join(', ') || 'N/D'}</div>
+                <div class="info-section"><h3>Specifiche Tecniche</h3><ul class="info-list">${perfHTML}</ul></div>
+                <div class="info-section"><h3>Formati in Commercio</h3><ul class="info-list">${releaseHTML}</ul></div>
+                <div class="info-section"><h3>Prezzo Patch Upgrade</h3><div style="font-size: 0.9rem; color: #ccc;">${gioco.patch_upgrade.disponibile ? `Disponibile (${gioco.patch_upgrade.dettaglio_costo || 'Da verificare'})` : 'Nessuna patch necessaria'}</div></div>
+            `;
+            document.getElementById('gameModal').classList.add('active');
+        }
+
+        function closeModal() { 
+            triggerHaptic(10);
+            document.getElementById('gameModal').classList.remove('active'); 
+        }
+        window.onclick = function(event) { if (event.target === document.getElementById('gameModal')) closeModal(); }
+    </script>
+</body>
+</html>
